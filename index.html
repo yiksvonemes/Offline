@@ -91,6 +91,12 @@ label.sub2{display:block}
 textarea{width:100%;font:400 15px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);background:var(--surface);border:1.5px solid var(--line);border-radius:10px;padding:12px;resize:vertical}
 textarea:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
 #copied{font-size:14px;color:var(--muted)}
+.rows b span{color:var(--muted);font-weight:400;font-size:13px}
+#log div{flex-wrap:wrap}
+#log div>span:last-child{display:flex;gap:8px;align-items:center}
+#log input[type=text]{width:96px;font-size:16px;padding:7px 8px}
+#log .x{padding:5px 11px;font-size:18px}
+.mk{font-size:13px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -135,9 +141,20 @@ textarea:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
       <div class="legend" id="legend"></div>
       <p class="sub2">Тоталы и «обе забьют»</p>
       <div class="rows" id="rows"></div>
+      <p class="sub2">Форы (при возврате ставка возвращается)</p>
+      <div class="rows" id="hcap"></div>
+      <p class="sub2">Индивидуальные тоталы</p>
+      <div class="rows" id="itot"></div>
       <p class="sub2">Вероятность каждого счёта, % (строки: голы хозяев, столбцы: голы гостей)</p>
       <div class="gridwrap"><table id="grid" aria-label="Вероятности счетов"></table></div>
     </div>
+  </section>
+
+  <section>
+    <h2>Подбор ставок под счета</h2>
+    <label for="scores" class="sub2" style="margin-top:0">Счета, которые нужно покрыть (например: 2:1, 1:1, 2:0)</label>
+    <input type="text" id="scores" autocomplete="off">
+    <div id="betout"></div>
   </section>
 
   <section id="postsec" hidden>
@@ -150,8 +167,18 @@ textarea:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
     </div>
     <label for="post" class="sub2">Текст поста (можно править перед копированием)</label>
     <textarea id="post" rows="16"></textarea>
-    <button class="btn" id="copy" type="button">Скопировать текст</button><span id="copied" role="status"></span>
+    <button class="btn" id="copy" type="button">Скопировать текст</button><button class="btn" id="tolog" type="button">Сохранить в журнал</button><span id="copied" role="status"></span>
     <p class="hint">Текст пересобирается при каждом изменении данных. Публикуйте разбор до матча и не редактируйте после.</p>
+  </section>
+
+  <section>
+    <h2>Журнал прогнозов</h2>
+    <p class="hint" id="logstat" style="margin:0 0 10px"></p>
+    <div class="rows" id="log"></div>
+    <button class="btn" id="mkrep" type="button">Собрать итоги для канала</button><span id="repmsg" role="status"></span>
+    <textarea id="rep" rows="10" hidden style="margin-top:10px"></textarea>
+    <button class="btn" id="copyrep" type="button" hidden>Скопировать и отметить опубликованными</button>
+    <p class="hint">Прогноз в журнале это счёт по формуле. Исход, тотал 2,5 (больше при 3 и более голах) и точный счёт проверяются по нему. Журнал хранится только в вашем браузере.</p>
   </section>
 
   <section>
@@ -159,6 +186,7 @@ textarea:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
     <div class="set">
       <div><label for="thr">Округлять вверх от</label><input type="text" id="thr" inputmode="decimal" autocomplete="off"></div>
       <div><label for="rthr">Порог разницы для правила</label><input type="text" id="rthr" inputmode="decimal" autocomplete="off"></div>
+      <div><label for="rho">Поправка на ничьи ρ (0 = выкл.)</label><input type="text" id="rho" inputmode="decimal" autocomplete="off"></div>
     </div>
     <label class="chk"><input type="checkbox" id="rule"> Правило равного счёта: если счёт равный, фавориту +1 гол</label>
   </section>
@@ -263,16 +291,19 @@ function compile(src){
 /*ENDPARSER*/
 
 /*POISSON*/
+var RHO=0;
 function pois(l,N){var a=[Math.exp(-l)];for(var k=1;k<=N;k++)a.push(a[k-1]*l/k);return a}
 function pcalc(lh,la){
-  var N=30, ph=pois(lh,N), pa=pois(la,N), cells=[], hw=0, dr=0, aw=0, tot=[], t, h, a, p;
+  var N=30, ph=pois(lh,N), pa=pois(la,N), cells=[], hw=0, dr=0, aw=0, tot=[], t, h, a, p, M=[], bt=0;
   for(t=0;t<=2*N;t++)tot.push(0);
   for(h=0;h<=N;h++)for(a=0;a<=N;a++){
-    p=ph[h]*pa[a];cells.push([h,a,p]);
+    p=ph[h]*pa[a];
+    if(RHO&&h<2&&a<2){p*=h===0&&a===0?1-lh*la*RHO:h===0?1+lh*RHO:a===0?1+la*RHO:1-RHO;if(p<0)p=0}
+    (M[h]=M[h]||[])[a]=p;if(h>0&&a>0)bt+=p;cells.push([h,a,p]);
     if(h>a)hw+=p;else if(h===a)dr+=p;else aw+=p;
     tot[h+a]+=p;
   }
-  return {ph:ph,pa:pa,cells:cells,hw:hw,dr:dr,aw:aw,tot:tot,btts:(1-ph[0])*(1-pa[0])};
+  return {ph:ph,pa:pa,cells:cells,hw:hw,dr:dr,aw:aw,tot:tot,btts:bt,M:M};
 }
 /*ENDPOISSON*/
 
@@ -286,16 +317,16 @@ function pcalc(lh,la){
 
   var DEF={
     f:[{n:'X',e:'0,1*h_хоз + 0,1*g_гост + 0,8*(t/2 + 1,3*d)'},{n:'Y',e:'0,1*h_гост + 0,1*g_хоз + 0,8*(t/2 − 1,3*d)'}],
-    v:{},o:['','',''],thr:'0,55',rthr:'0,10',rule:true,p:{h:'',a:'',l:'',w:''}
+    v:{},o:['','',''],thr:'0,55',rthr:'0,10',rule:true,p:{h:'',a:'',l:'',w:''},log:[]
   };
   var S=JSON.parse(JSON.stringify(DEF));
   try{
     var raw=localStorage.getItem('formcalc');
-    if(raw){var q=JSON.parse(raw);if(q&&q.f&&q.f.length){S=q;S.v=S.v||{};S.o=S.o||['','',''];if(!S.thr)S.thr=DEF.thr;if(!S.rthr)S.rthr=DEF.rthr;if(!S.p)S.p={h:'',a:'',l:'',w:''}}}
+    if(raw){var q=JSON.parse(raw);if(q&&q.f&&q.f.length){S=q;S.v=S.v||{};S.o=S.o||['','',''];if(!S.thr)S.thr=DEF.thr;if(!S.rthr)S.rthr=DEF.rthr;if(!S.p)S.p={h:'',a:'',l:'',w:''};if(!S.log)S.log=[]}}
   }catch(e){}
   function save(){try{localStorage.setItem('formcalc',JSON.stringify(S))}catch(e){}}
 
-  var compiled=[], varKey='', varInputs={};
+  var compiled=[], varKey='', varInputs={}, lastR=null, cur=null, repItems=[];
 
   function buildForms(){
     var box=$('forms');box.innerHTML='';
@@ -340,7 +371,7 @@ function pcalc(lh,la){
   }
 
   function renderPoisson(lh,la){
-    var sec=$('pz');
+    var sec=$('pz');lastR=null;
     if(lh===null||la===null){sec.hidden=true;return}
     sec.hidden=false;
     $('ptitle').textContent='Пуассон: xG хозяев '+fmt(lh,2)+', xG гостей '+fmt(la,2);
@@ -359,15 +390,16 @@ function pcalc(lh,la){
     function over(line){var s=0;for(var t=0;t<r.tot.length;t++)if(t>line)s+=r.tot[t];return s}
     var rows=[['Тотал больше 1,5',over(1.5)],['Тотал больше 2,5',over(2.5)],['Тотал больше 3,5',over(3.5)],['Тотал больше 4,5',over(4.5)],['Обе забьют',r.btts]];
     $('rows').innerHTML=rows.map(function(x){return '<div><span>'+x[0]+'</span><b>'+pct(x[1])+'%</b></div>'}).join('');
+    lastR=r;renderExtra();
     var G=6, mx=0;
-    for(i=0;i<G;i++)for(j=0;j<G;j++)mx=Math.max(mx,r.ph[i]*r.pa[j]);
+    for(i=0;i<G;i++)for(j=0;j<G;j++)mx=Math.max(mx,r.M[i][j]);
     var html='<tr><th></th>';
     for(j=0;j<G;j++)html+='<th>'+j+'</th>';
     html+='</tr>';
     for(i=0;i<G;i++){
       html+='<tr><th>'+i+'</th>';
       for(j=0;j<G;j++){
-        var v=r.ph[i]*r.pa[j], al=mx>0?(v/mx)*0.9:0, cls=(al>0.5?'hi':'')+(key[i+':'+j]?' top':'');
+        var v=r.M[i][j], al=mx>0?(v/mx)*0.9:0, cls=(al>0.5?'hi':'')+(key[i+':'+j]?' top':'');
         html+='<td class="'+cls.trim()+'" style="--a:'+al.toFixed(3)+'">'+pct(v)+'</td>';
       }
       html+='</tr>';
@@ -376,6 +408,7 @@ function pcalc(lh,la){
   }
 
   function compute(){
+    RHO=num(S.rho);if(!isFinite(RHO)||RHO<-0.5||RHO>0.5)RHO=0;
     var res=$('res');res.innerHTML='';
     var thr=num(S.thr), vals=[];
     if(!(thr>=0&&thr<=1))thr=0.55;
@@ -415,6 +448,7 @@ function pcalc(lh,la){
     }else{sc.hidden=true}
     renderPoisson(ready?vals[0]:null,ready?vals[1]:null);
     renderPost(ready?vals[0]:null,ready?vals[1]:null,scoreTxt);
+    cur=scoreTxt?{sc:scoreTxt}:null;$('tolog').disabled=!cur;renderBets();
     save();
   }
 
@@ -439,6 +473,104 @@ function pcalc(lh,la){
     if(o[0]&&o[1]&&o[2])L.push('','Данные: коэффициенты '+o[0]+' / '+o[1]+' / '+o[2]+'.');
     L.push('','Это расчёт, а не совет делать ставки. 18+');
     $('post').value=L.join('\n');
+  }
+
+  function sg(k){return (k>0?'+':k<0?'−':'')+fmt(Math.abs(k),k%1?1:0)}
+  function Pf(f){var M=lastR&&lastR.M,s=0,h,a;if(!M)return null;for(h=0;h<M.length;h++)for(a=0;a<M[h].length;a++)if(f(h,a))s+=M[h][a];return s}
+  function rowH(n,w,x){return '<div><span>'+n+'</span><b>'+(w===null?'—':pct(w)+'%')+(x?' <span>'+x+'</span>':'')+'</b></div>'}
+  function renderExtra(){
+    var hc='',it='';
+    [-1.5,-1,-0.5,0,0.5,1,1.5].forEach(function(k){
+      [['Хозяева',1],['Гости',-1]].forEach(function(z){
+        var w=Pf(function(h,a){return z[1]*(h-a)+k>0}), u=Pf(function(h,a){return z[1]*(h-a)+k===0});
+        hc+=rowH(z[0]+' '+sg(k),w,u>0.0005?'возврат '+pct(u)+'%':'');
+      });
+    });
+    [0.5,1.5,2.5].forEach(function(k){
+      it+=rowH('ИТ хозяев больше '+fmt(k,1),Pf(function(h){return h>k}));
+      it+=rowH('ИТ гостей больше '+fmt(k,1),Pf(function(h,a){return a>k}));
+    });
+    $('hcap').innerHTML=hc;$('itot').innerHTML=it;
+  }
+  function betList(){
+    var L=[];function add(n,f){L.push({n:n,f:f})}
+    add('П1 (победа хозяев)',function(h,a){return h>a});add('Х (ничья)',function(h,a){return h===a});add('П2 (победа гостей)',function(h,a){return h<a});
+    add('1Х',function(h,a){return h>=a});add('Х2',function(h,a){return h<=a});add('12 (без ничьей)',function(h,a){return h!==a});
+    [0.5,1.5,2.5,3.5,4.5,5.5].forEach(function(k){add('Тотал больше '+fmt(k,1),function(h,a){return h+a>k});add('Тотал меньше '+fmt(k,1),function(h,a){return h+a<k})});
+    [0.5,1.5,2.5].forEach(function(k){
+      add('ИТ хозяев больше '+fmt(k,1),function(h){return h>k});add('ИТ хозяев меньше '+fmt(k,1),function(h){return h<k});
+      add('ИТ гостей больше '+fmt(k,1),function(h,a){return a>k});add('ИТ гостей меньше '+fmt(k,1),function(h,a){return a<k});
+    });
+    [-2.5,-1.5,-0.5,0.5,1.5,2.5].forEach(function(k){add('Фора хозяев '+sg(k),function(h,a){return h-a+k>0});add('Фора гостей '+sg(k),function(h,a){return a-h+k>0})});
+    add('Обе забьют',function(h,a){return h>0&&a>0});add('Не обе забьют',function(h,a){return h===0||a===0});
+    return L;
+  }
+  function renderBets(){
+    var box=$('betout'), sc=[], m, re=/(\d+)\s*[:\-–]\s*(\d+)/g, txt=$('scores').value;
+    while((m=re.exec(txt)))sc.push([+m[1],+m[2]]);
+    if(!sc.length){box.innerHTML='';return}
+    var ok=betList().filter(function(b){return sc.every(function(s){return b.f(s[0],s[1])})}), out='', i, j, p, cb=[];
+    if(!ok.length){box.innerHTML='<p class="hint">Ни одна ставка из списка не проходит под все эти счета.</p>';return}
+    ok.forEach(function(b){b.p=Pf(b.f)});
+    if(lastR){var fl=ok.filter(function(b){return b.p<0.9});if(fl.length)ok=fl}
+    ok.sort(function(x,y){return (y.p||0)-(x.p||0)});
+    out+='<p class="sub2">Подходят под все счета'+(lastR?' (вероятность по Пуассону)':'')+'</p><div class="rows">';
+    if(lastR)out+=rowH('Шанс, что матч закончится одним из этих счетов',Pf(function(h,a){return sc.some(function(s){return s[0]===h&&s[1]===a})}));
+    ok.slice(0,10).forEach(function(b){out+=rowH(b.n,b.p)});
+    out+='</div>';
+    if(lastR){
+      for(i=0;i<ok.length;i++)for(j=i+1;j<ok.length;j++){
+        p=Pf(function(h,a){return ok[i].f(h,a)&&ok[j].f(h,a)});
+        if(p<Math.min(ok[i].p,ok[j].p)-1e-9)cb.push([ok[i].n+' + '+ok[j].n,p]);
+      }
+      cb.sort(function(x,y){return y[1]-x[1]});
+      if(cb.length){out+='<p class="sub2">Комбинации (уже, коэффициент выше)</p><div class="rows">';cb.slice(0,6).forEach(function(c){out+=rowH(c[0],c[1])});out+='</div>'}
+      out+='<p class="hint">Слишком очевидные ставки (вероятность выше 90%) скрыты.</p>';
+    }else out+='<p class="hint">Введите значения формул, и появятся вероятности и комбинации.</p>';
+    box.innerHTML=out;
+  }
+  function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2)}
+  function parseRes(s){var m=/(\d+)\D+(\d+)/.exec(s||'');return m?[+m[1],+m[2]]:null}
+  function judge(e){
+    var r=parseRes(e.res), p=parseRes(e.sc);
+    if(!r||!p)return null;
+    return {i:Math.sign(p[0]-p[1])===Math.sign(r[0]-r[1]),t:(p[0]+p[1]>2.5)===(r[0]+r[1]>2.5),s:p[0]===r[0]&&p[1]===r[1],r:r[0]+':'+r[1]};
+  }
+  function tally(list){var c={n:0,i:0,t:0,s:0};list.forEach(function(e){var j=judge(e);if(j){c.n++;if(j.i)c.i++;if(j.t)c.t++;if(j.s)c.s++}});return c}
+  function tl(c,k){return c.n?c[k]+' из '+c.n+' ('+fmt(c[k]/c.n*100,0)+'%)':'—'}
+  function logStat(){
+    var c=tally(S.log);
+    $('logstat').textContent=S.log.length?'Записей: '+S.log.length+', с результатом: '+c.n+'. Исход: '+tl(c,'i')+'; тотал 2,5: '+tl(c,'t')+'; точный счёт: '+tl(c,'s')+'.':'Пока пусто. Сохраняйте прогнозы кнопкой в блоке «Пост для канала».';
+  }
+  function renderLog(){
+    var box=$('log');box.innerHTML='';
+    if(!S.log.length)box.appendChild(el('div',null,'Журнал пуст.'));
+    S.log.slice().reverse().forEach(function(e){
+      var row=el('div'), t=el('span',null,e.home+' — '+e.away+' · прогноз '+e.sc+(e.pub?' · в итогах':'')), ctl=el('span'), inp=el('input'), mk=el('span','mk'), del=el('button','x','×');
+      inp.type='text';inp.placeholder='факт, 2:1';inp.value=e.res||'';inp.autocomplete='off';inp.setAttribute('aria-label','Фактический счёт');
+      del.type='button';del.setAttribute('aria-label','Удалить из журнала');
+      function mark(){var j=judge(e);mk.textContent=j?'исход '+(j.i?'✓':'✗')+' тотал '+(j.t?'✓':'✗')+' счёт '+(j.s?'✓':'✗'):''}
+      inp.addEventListener('input',function(){e.res=inp.value;mark();logStat();save()});
+      del.addEventListener('click',function(){S.log.splice(S.log.indexOf(e),1);renderLog();save()});
+      mark();ctl.appendChild(inp);ctl.appendChild(mk);ctl.appendChild(del);row.appendChild(t);row.appendChild(ctl);box.appendChild(row);
+    });
+    logStat();
+  }
+  function mkReport(){
+    var items=S.log.filter(function(e){return judge(e)&&!e.pub});
+    if(!items.length){$('repmsg').textContent=' Нет новых результатов';setTimeout(function(){$('repmsg').textContent=''},2500);return}
+    repItems=items;
+    var d=today(), L=['📊 Итоги '+d.slice(8)+'.'+d.slice(5,7),''];
+    items.forEach(function(e){var j=judge(e);L.push(e.home+' — '+e.away+' '+j.r+' → исход '+(j.i?'✓':'✗')+', тотал '+(j.t?'✓':'✗')+', счёт '+(j.s?'✓':'✗')+' (прогноз '+e.sc+')')});
+    var c=tally(items), a=tally(S.log);
+    L.push('','В этом выпуске: исход '+c.i+'/'+c.n+', тотал '+c.t+'/'+c.n+', счёт '+c.s+'/'+c.n,'За всё время: исход '+tl(a,'i')+', тотал '+tl(a,'t')+', счёт '+tl(a,'s'));
+    $('rep').value=L.join('\n');$('rep').hidden=false;$('copyrep').hidden=false;
+  }
+  function copyRep(){
+    var ta=$('rep'), msg=$('repmsg');
+    function done(){repItems.forEach(function(e){e.pub=true});repItems=[];renderLog();save();ta.hidden=true;$('copyrep').hidden=true;msg.textContent=' Скопировано, записи отмечены';setTimeout(function(){msg.textContent=''},2500)}
+    function fb(){ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);try{if(document.execCommand('copy'))done();else msg.textContent=' Скопируйте вручную'}catch(e){msg.textContent=' Скопируйте вручную'}}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(ta.value).then(done,fb)}else fb();
   }
 
   function oddsUpdate(){
@@ -470,6 +602,16 @@ function pcalc(lh,la){
     $(x[0]).value=S.p[x[1]]||'';
     $(x[0]).addEventListener('input',function(){S.p[x[1]]=$(x[0]).value;compute()});
   });
+  $('rho').value=S.rho||'';$('rho').addEventListener('input',function(){S.rho=$('rho').value;compute()});
+  $('scores').addEventListener('input',renderBets);
+  $('tolog').addEventListener('click',function(){
+    if(!cur)return;
+    S.log.push({home:S.p.h||'Хозяева',away:S.p.a||'Гости',l:S.p.l||'',w:S.p.w||'',sc:cur.sc,day:today(),res:'',pub:false});
+    renderLog();save();$('copied').textContent=' Добавлено в журнал';setTimeout(function(){$('copied').textContent=''},2500);
+  });
+  $('mkrep').addEventListener('click',mkReport);
+  $('copyrep').addEventListener('click',copyRep);
+  renderLog();
   $('copy').addEventListener('click',function(){
     var ta=$('post'), msg=$('copied');
     function ok(){msg.textContent=' Скопировано';setTimeout(function(){msg.textContent=''},2000)}
