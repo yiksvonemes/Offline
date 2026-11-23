@@ -1,10 +1,10 @@
 {
-  "id": "./formula.html",
+  "id": "./",
   "name": "Формулы и Пуассон",
   "short_name": "Формулы",
   "description": "Калькулятор своих формул с распределением Пуассона",
   "lang": "ru",
-  "start_url": "./formula.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

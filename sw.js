@@ -1,10 +1,13 @@
-var CACHE = 'formula-v1';
-var FILES = ['./formula.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
+var CACHE = 'formula-v2';
+var FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(
     caches.open(CACHE)
-      .then(function (c) { return c.addAll(FILES); })
+      .then(function (c) {
+        // каждый файл сохраняем отдельно: если какого-то нет, остальные всё равно сохранятся
+        return Promise.all(FILES.map(function (f) { return c.add(f).catch(function () {}); }));
+      })
       .then(function () { return self.skipWaiting(); })
   );
 });
