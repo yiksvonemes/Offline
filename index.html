@@ -91,6 +91,9 @@ label.sub2{display:block}
 textarea{width:100%;font:400 15px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);background:var(--surface);border:1.5px solid var(--line);border-radius:10px;padding:12px;resize:vertical}
 textarea:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
 #copied{font-size:14px;color:var(--muted)}
+.sports{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 18px}
+.sports button{font:600 16px/1 inherit;font-family:inherit;padding:13px 6px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.sports button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .rows b span{color:var(--muted);font-weight:400;font-size:13px}
 #log div{flex-wrap:wrap}
 #log div>span:last-child{display:flex;gap:8px;align-items:center}
@@ -101,6 +104,11 @@ textarea:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
 </head>
 <body>
 <main>
+  <div class="sports" id="sports" role="group" aria-label="Вид спорта">
+    <button type="button" data-s="fb" aria-pressed="true">Футбол</button>
+    <button type="button" data-s="hk" aria-pressed="false">Хоккей</button>
+    <button type="button" data-s="bk" aria-pressed="false">Баскетбол</button>
+  </div>
   <h1>Формулы и Пуассон</h1>
   <p class="sub">Впишите формулы, введите значения переменных, и по результату сразу посчитается распределение Пуассона.</p>
 
@@ -118,7 +126,7 @@ textarea:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
       <div><label for="o0">X</label><input type="text" id="o0" inputmode="decimal" autocomplete="off"></div>
       <div><label for="o2">П2</label><input type="text" id="o2" inputmode="decimal" autocomplete="off"></div>
     </div>
-    <p class="dline" id="dline">Введите три коэффициента, и я посчитаю d = P(П1) − P(П2) без маржи.</p>
+    <p class="dline" id="dline">Введите коэффициенты П1, X и П2 (в хоккее и баскетболе без ничьей оставьте X пустым), и я посчитаю d = P(П1) − P(П2) без маржи.</p>
   </section>
 
   <section>
@@ -315,14 +323,19 @@ function pcalc(lh,la){
   function pct(x){return fmt(x*100,1)}
   function rnd(x,thr){return Math.floor(x+(1-thr)+1e-9)}
 
+  var PRESETS={
+    fb:[{n:'X',e:'(0,25*h_хоз/10)+(0,25*g_гост/10)+(0,5*(t/2+1,8*d))'},{n:'Y',e:'(0,25*h_гост/10)+(0,25*g_хоз/10)+(0,5*(t/2-1,8*d))'}],
+    hk:[{n:'X',e:'(0,25*h_хоз/10)+(0,25*g_гост/10)+(0,5*(t/2+2,5*d))'},{n:'Y',e:'(0,25*h_гост/10)+(0,25*g_хоз/10)+(0,5*(t/2-2,5*d))'}],
+    bk:[{n:'X',e:'(t/2+8*d)'},{n:'Y',e:'(t/2-8*d)'}]
+  };
   var DEF={
-    f:[{n:'X',e:'0,1*h_хоз + 0,1*g_гост + 0,8*(t/2 + 1,3*d)'},{n:'Y',e:'0,1*h_гост + 0,1*g_хоз + 0,8*(t/2 − 1,3*d)'}],
+    f:JSON.parse(JSON.stringify(PRESETS.fb)),sport:'fb',fs:{},
     v:{},o:['','',''],thr:'0,55',rthr:'0,10',rule:true,p:{h:'',a:'',l:'',w:''},log:[]
   };
   var S=JSON.parse(JSON.stringify(DEF));
   try{
     var raw=localStorage.getItem('formcalc');
-    if(raw){var q=JSON.parse(raw);if(q&&q.f&&q.f.length){S=q;S.v=S.v||{};S.o=S.o||['','',''];if(!S.thr)S.thr=DEF.thr;if(!S.rthr)S.rthr=DEF.rthr;if(!S.p)S.p={h:'',a:'',l:'',w:''};if(!S.log)S.log=[]}}
+    if(raw){var q=JSON.parse(raw);if(q&&q.f&&q.f.length){S=q;S.v=S.v||{};S.o=S.o||['','',''];if(!S.thr)S.thr=DEF.thr;if(!S.rthr)S.rthr=DEF.rthr;if(!S.p)S.p={h:'',a:'',l:'',w:''};if(!S.log)S.log=[];if(!S.sport){S.sport='fb';S.f=JSON.parse(JSON.stringify(PRESETS.fb))}if(!S.fs)S.fs={}}}
   }catch(e){}
   function save(){try{localStorage.setItem('formcalc',JSON.stringify(S))}catch(e){}}
 
@@ -577,21 +590,22 @@ function pcalc(lh,la){
     var o=[num($('o1').value),num($('o0').value),num($('o2').value)];
     S.o=[$('o1').value,$('o0').value,$('o2').value];
     var line=$('dline');
-    if(o.every(function(x){return x>1})){
-      var p=o.map(function(x){return 1/x}), s=p[0]+p[1]+p[2], d=(p[0]-p[2])/s;
+    var two=!$('o0').value.trim()&&o[0]>1&&o[2]>1;
+    if(two||o.every(function(x){return x>1})){
+      var p=o.map(function(x){return x>1?1/x:0}), s=p[0]+p[1]+p[2], d=(p[0]-p[2])/s;
       line.textContent='d = '+fmt(d,3)+' (маржа '+fmt((s-1)*100,1)+'%)'+(('d' in varInputs)?', подставлено в переменную d.':'. Назовите переменную d в формуле, и она заполнится сама.');
       S.v.d=fmt(d,3);
       if(varInputs.d)varInputs.d.value=S.v.d;
       compute();
     }else{
-      line.textContent='Введите три коэффициента, и я посчитаю d = P(П1) − P(П2) без маржи.';
+      line.textContent='Введите коэффициенты П1, X и П2 (в хоккее и баскетболе без ничьей оставьте X пустым), и я посчитаю d = P(П1) − P(П2) без маржи.';
       compute();
     }
     save();
   }
 
   $('add').addEventListener('click',function(){S.f.push({n:'Z'+(S.f.length+1),e:''});buildForms();update()});
-  $('reset').addEventListener('click',function(){S.f=JSON.parse(JSON.stringify(DEF.f));buildForms();update()});
+  $('reset').addEventListener('click',function(){S.f=JSON.parse(JSON.stringify(PRESETS[S.sport]));buildForms();update()});
   ['o1','o0','o2'].forEach(function(id){$(id).addEventListener('input',oddsUpdate)});
   $('o1').value=S.o[0]||'';$('o0').value=S.o[1]||'';$('o2').value=S.o[2]||'';
   $('thr').value=S.thr;$('rthr').value=S.rthr;$('rule').checked=!!S.rule;
@@ -622,6 +636,10 @@ function pcalc(lh,la){
     }
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(ta.value).then(ok,fb)}else{fb()}
   });
+  function syncSports(){Array.prototype.forEach.call(document.querySelectorAll('#sports button'),function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-s')===S.sport))})}
+  function setSport(k){if(k===S.sport)return;S.fs[S.sport]=S.f;S.sport=k;S.f=S.fs[k]||JSON.parse(JSON.stringify(PRESETS[k]));buildForms();syncSports();update()}
+  Array.prototype.forEach.call(document.querySelectorAll('#sports button'),function(b){b.addEventListener('click',function(){setSport(b.getAttribute('data-s'))})});
+  syncSports();
   buildForms();update();
 })();
 try{
