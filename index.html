@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Формулы и Пуассон</title>
+<title>xG и Пуассон</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -186,17 +186,17 @@ textarea:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
     <button class="btn" id="mkrep" type="button">Собрать итоги для канала</button><span id="repmsg" role="status"></span>
     <textarea id="rep" rows="10" hidden style="margin-top:10px"></textarea>
     <button class="btn" id="copyrep" type="button" hidden>Скопировать и отметить опубликованными</button>
-    <p class="hint">Прогноз в журнале это счёт по формуле. Исход, тотал 2,5 (больше при 3 и более голах) и точный счёт проверяются по нему. Журнал хранится только в вашем браузере.</p>
+    <p class="hint">Прогноз в журнале это самый вероятный счёт по Пуассону. Исход, тотал 2,5 (больше при 3 и более голах) и точный счёт проверяются по нему. Журнал хранится только в вашем браузере.</p>
   </section>
 
   <section>
-    <h2>Округление</h2>
+    <h2>Поправка Пуассона</h2>
     <div class="set">
-      <div><label for="thr">Округлять вверх от</label><input type="text" id="thr" inputmode="decimal" autocomplete="off"></div>
-      <div><label for="rthr">Порог разницы для правила</label><input type="text" id="rthr" inputmode="decimal" autocomplete="off"></div>
+      <div hidden><label for="thr">Округлять вверх от</label><input type="text" id="thr" inputmode="decimal" autocomplete="off"></div>
+      <div hidden><label for="rthr">Порог разницы для правила</label><input type="text" id="rthr" inputmode="decimal" autocomplete="off"></div>
       <div><label for="rho">Поправка на ничьи ρ (0 = выкл.)</label><input type="text" id="rho" inputmode="decimal" autocomplete="off"></div>
     </div>
-    <label class="chk"><input type="checkbox" id="rule"> Правило равного счёта: если счёт равный, фавориту +1 гол</label>
+    <label class="chk" hidden><input type="checkbox" id="rule"> Правило равного счёта: если счёт равный, фавориту +1 гол</label>
   </section>
 </main>
 <script>
@@ -441,7 +441,6 @@ function pcalc(lh,la){
             if(!isFinite(v))throw new PErr('Результат не число');
             vals[i]=v;
             right=el('b',null,fmt(v,2));
-            right.appendChild(el('span',null,'  → '+rnd(v,thr)));
           }catch(err){right.textContent=err.message||'ошибка'}
         }
       }
@@ -449,17 +448,15 @@ function pcalc(lh,la){
     });
     if(!S.f.length)res.appendChild(el('div',null,'Добавьте формулу.'));
     var sc=$('score'), scoreTxt=null, ready=vals.length>=2&&vals[0]!==null&&vals[1]!==null;
+    renderPoisson(ready?vals[0]:null,ready?vals[1]:null);
     if(ready){
-      var a=rnd(vals[0],thr), b=rnd(vals[1],thr), note='Округление от '+fmt(thr,2);
-      var rt=num(S.rthr);if(isNaN(rt))rt=0.1;
-      var diff=Math.abs(vals[0]-vals[1]);
-      if(S.rule&&a===b&&diff>=rt){
-        if(vals[0]>vals[1])a++;else b++;
-        note+=', равный счёт: фавориту +1 (разница '+fmt(diff,2)+')';
-      }
+      var a,b,note;
+      if(lastR){
+        var best=lastR.cells.reduce(function(m,c){return c[2]>m[2]?c:m},[0,0,-1]);
+        a=best[0];b=best[1];note='Самый вероятный счёт по Пуассону ('+pct(best[2])+'%)';
+      }else{a=rnd(vals[0],thr);b=rnd(vals[1],thr);note='Пуассон здесь не применим, показано округление xG'}
       sc.innerHTML='';sc.appendChild(el('b',null,a+':'+b));sc.appendChild(el('span',null,note));sc.hidden=false;scoreTxt=a+':'+b;
     }else{sc.hidden=true}
-    renderPoisson(ready?vals[0]:null,ready?vals[1]:null);
     renderPost(ready?vals[0]:null,ready?vals[1]:null,scoreTxt);
     cur=scoreTxt?{sc:scoreTxt}:null;$('tolog').disabled=!cur;renderBets();
     save();
@@ -481,7 +478,7 @@ function pcalc(lh,la){
       'Самые вероятные счета:',
       top.map(function(c){return c[0]+':'+c[1]+' ('+fmt(c[2]*100,0)+'%)'}).join(', '),'',
       'Тотал: больше 2,5 — '+fmt(o25*100,0)+'%','Обе забьют — '+fmt(r.btts*100,0)+'%');
-    if(score)L.push('','Счёт по формуле: '+score);
+    if(score)L.push('','Самый вероятный счёт: '+score);
     var o=S.o||[];
     if(o[0]&&o[1]&&o[2])L.push('','Данные: коэффициенты '+o[0]+' / '+o[1]+' / '+o[2]+'.');
     L.push('','Это расчёт, а не совет делать ставки. 18+');
